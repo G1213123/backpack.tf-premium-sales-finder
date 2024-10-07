@@ -4,14 +4,16 @@
 // @version     4.1.1
 // @description Adds coloring to history pages indicating recent sales and includes compare links for sales
 // @author      Julia
-// @updateURL   https://github.com/juliarose/backpack.tf-premium-sales-finder/raw/master/backpacktf-premium-sales-finder.meta.js
-// @downloadURL https://github.com/juliarose/backpack.tf-premium-sales-finder/raw/master/backpacktf-premium-sales-finder.user.js
+// @updateURL   https://github.com/G1213123/backpack.tf-premium-sales-finder/raw/master/backpacktf-premium-sales-finder.meta.js
+// @downloadURL https://github.com/G1213123/backpack.tf-premium-sales-finder/raw/master/backpacktf-premium-sales-finder.user.js
 // @run-at      document-end
 // @grant       GM_addStyle
 // @grant       unsafeWindow
 // @include     /^https?:\/\/(.*\.)?backpack\.tf(:\d+)?\/item\/\d+/
 // @include     /^https?:\/\/(.*\.)?backpack\.tf(:\d+)?\/premium\/search.*/
 // @include     /^https?:\/\/(.*\.)?backpack\.tf\/profiles\/\d{17}/
+// @include     /^https?:\/\/(.*\.)?backpack\.tf\/profiles\/\d{17}#!\/compare\/\d{10}\/\d{10}/
+// @include     /^https?:\/\/(.*\.)?backpack\.tf\/unusual\/*/
 // ==/UserScript==
 
 (function() {
@@ -572,9 +574,151 @@
                     
                     // finally update location.href using new timestamps
                     location.href = location.href.replace(reNearest, [from, to].join('/'));
-                }());
+                }()
+
+                );
+
+                (function incrementButton() {
+                    //add date change button
+                    function increment_option(increment){
+                        const fromSelect = document.getElementById('inventory-cmp-from');
+                        const toSelect = document.getElementById('inventory-cmp-to');
+                        const oldTime = `${fromSelect.value}/${toSelect.value}`
+
+                        let fromNewIndex = fromSelect.selectedIndex + increment;
+                        let toNewIndex = toSelect.selectedIndex + increment;
+
+                        // Update 'From' index if within bounds
+                        if (fromNewIndex >= 0 && fromNewIndex < fromSelect.options.length) {
+                            fromSelect.selectedIndex = fromNewIndex;
+                        }
+
+                        // Update 'To' index if within bounds
+                        if (toNewIndex >= 0 && toNewIndex < toSelect.options.length) {
+                            toSelect.selectedIndex = toNewIndex;
+                        }
+
+                        // Get the current values after possible changes
+                        const fromValue = fromSelect.options[fromSelect.selectedIndex].value;
+                        const toValue = toSelect.options[toSelect.selectedIndex].value;
+
+                        // Construct the new URL using the selected values
+                        location.href = location.href.replace(oldTime, [fromValue, toValue].join('/'));
+                        location.reload();
+
+                    }
+                    function addButton(text, increment) {
+                        const button = document.createElement('button');
+                        button.textContent = text;
+                        button.type = 'button'; // Prevent the form from submitting
+                        button.classList.add('btn-block');
+                        button.addEventListener('click', () => increment_option(increment));
+
+                        // Append the button to the form
+                        const buttonDiv = document.querySelector('#dateButtonDiv');
+                        buttonDiv.appendChild(button);
+                    }
+                    // Function to check for the form and add buttons
+                    function checkAndAddButtons() {
+                        const form = document.querySelector('#inventory-cmp-form');
+                        if (form) {
+                            const buttondiv = document.createElement('div');
+                            buttondiv.classList.add('inputs');
+                            buttondiv.id = 'dateButtonDiv';
+                            form.appendChild(buttondiv);
+
+                            addButton('Previous Date', 1);
+                            addButton('Next Date', -1);
+                            return true; // Indicate that buttons have been added
+                        }
+                        return false; // Indicate that the form is not yet available
+                    }
+
+                    // Set up a MutationObserver to watch for changes in the body
+                    const observer = new MutationObserver(() => {
+                        if (checkAndAddButtons()) {
+                            observer.disconnect(); // Stop observing once buttons have been added
+                        }
+                    });
+
+                    observer.observe(document.body, { childList: true, subtree: true });
+
+                    // Initial check in case the form is already present
+                    checkAndAddButtons();
+                }())
             }
-        }
+        },
+        {includes: [
+                /^https?:\/\/(.*\.)?backpack\.tf\/unusual\/*/
+            ],
+            fn: function({$}) {
+            (function addLinktoUnusual(){
+                // Function to extract the number from the img src
+                function extractNumberFromSrc(src) {
+                    const match = src.match(/particles\/(\d+)_/);
+                    return match ? match[1] : 1; // Return the extracted number or null if not found
+                };
+
+                // Function to create a URL based on the extracted number
+                function createLink(name, effect) {
+                    return `/premium/search?item=${name}&quality=5&tradable=1&craftable=1&australium=-1&particle=${effect}&killstreak_tier=0`; // Adjust the URL as needed
+                };
+                const getItemNameFromURL = (text) => {
+                    const regex = /\/([^\/?]+)(\?|$)/; // Matches the last segment after the last "/" before "?"
+                    const match = text.match(regex);
+                    return match ? match[1] : null; // Return the captured group or null if not found
+                };
+                function overrideTableLink(tableClass){
+                    // Select the table by its class
+                    const table = document.querySelector(tableClass);
+
+                    // Check if the table exists
+                    if (table) {
+                        // Get the tbody of the table
+                        const tbody = table.querySelector('tbody');
+
+                        // Iterate over each row in the tbody
+                        const rows = tbody.querySelectorAll('tr');
+                        rows.forEach(row => {
+                            const effectName = row.getAttribute('data-effect_name');
+
+                            // Find all th elements in the current row
+                            const thElements = row.querySelectorAll('th');
+                            thElements.forEach(th => {
+                                // Find the img inside the th
+                                const img = th.querySelector('img');
+                                if (img && img.src) {
+                                    // Extract the number from the img src
+                                    const effect = extractNumberFromSrc(img.src);
+                                    const name = getItemNameFromURL(location.href);
+                                    if (effect) {
+                                        // Create a link based on the extracted number
+                                        const link = createLink(name, effect);
+
+                                        // Create an anchor element
+                                        const anchor = document.createElement('a');
+                                        anchor.href = link;
+                                        anchor.textContent = " " + effectName; // Set the text for the link
+                                        anchor.target = '_blank'; // Open in a new tab (optional)
+
+                                        // Clear existing text content but keep the img
+                                        th.childNodes.forEach(node => {
+                                            if (node.nodeType === Node.TEXT_NODE) {
+                                                th.removeChild(node); // Remove only text nodes
+                                            }
+                                        });
+                                        th.appendChild(anchor); // Add the link to the th
+                                    }
+                                }
+                            });
+                        });
+                    }
+                }
+                overrideTableLink('.table.table-bordered.unusual-pricelist');
+                overrideTableLink('.table.table-bordered.unusual-pricelist-missing');
+            }());
+            }
+        },
     ];
     
     (function() {
